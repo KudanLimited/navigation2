@@ -19,6 +19,7 @@
 #include <memory>
 #include <vector>
 #include <utility>
+#include <Eigen/Geometry>
 
 #include "angles/angles.h"
 #include "nav2_regulated_pure_pursuit_controller/regulated_pure_pursuit_controller.hpp"
@@ -182,7 +183,10 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 
   // Transform path to robot base frame
   auto transformed_plan = path_handler_->transformGlobalPlan(
-    pose, params_->max_robot_pose_search_dist, params_->interpolate_curvature_after_goal);
+    pose,
+    params_->max_robot_pose_search_dist,
+    params_->segment_switch_proportion,
+    params_->interpolate_curvature_after_goal);
   global_path_pub_->publish(transformed_plan);
 
   // Find look ahead distance and point on path and publish
@@ -229,6 +233,13 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   }
 
   linear_vel = params_->desired_linear_vel;
+
+  const double dist_to_carrot_pose =
+      std::hypot(carrot_pose.pose.position.x, carrot_pose.pose.position.y);
+
+  if (dist_to_carrot_pose < params_->slow_down_distance) {
+    linear_vel *= std::max(dist_to_carrot_pose / params_->slow_down_distance, params_->slow_down_min_proportion);
+  }
 
   // Make sure we're in compliance with basic constraints
   // For shouldRotateToPath, using x_vel_sign in order to support allow_reversing
@@ -400,9 +411,23 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
 {
   // Find the first pose which is at a distance greater than the lookahead distance
   auto goal_pose_it = std::find_if(
-    transformed_plan.poses.begin(), transformed_plan.poses.end(), [&](const auto & ps) {
+    transformed_plan.poses.begin() + 1, transformed_plan.poses.end(), [&](const auto &ps) {
       return hypot(ps.pose.position.x, ps.pose.position.y) >= lookahead_dist;
     });
+
+  // Check if there is a direction change after the first segment
+  if (transformed_plan.poses.size() >= 3) {
+    const auto &a_point = transformed_plan.poses[0].pose.position;
+    Eigen::Vector3d a(a_point.x, a_point.y, a_point.z);
+    const auto &b_point = transformed_plan.poses[1].pose.position;
+    Eigen::Vector3d b(b_point.x, b_point.y, b_point.z);
+    const auto &c_point = transformed_plan.poses[2].pose.position;
+    Eigen::Vector3d c(c_point.x, c_point.y, c_point.z);
+
+    if ((b - a).dot(c - b) <= 0) {
+      return transformed_plan.poses[1];
+    }
+  }
 
   // If the no pose is not far enough, take the last pose
   if (goal_pose_it == transformed_plan.poses.end()) {
@@ -441,7 +466,8 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
     auto prev_pose_it = std::prev(goal_pose_it);
     auto point = circleSegmentIntersection(
       prev_pose_it->pose.position,
-      goal_pose_it->pose.position, lookahead_dist);
+      goal_pose_it->pose.position,
+      lookahead_dist);
     geometry_msgs::msg::PoseStamped pose;
     pose.header.frame_id = prev_pose_it->header.frame_id;
     pose.header.stamp = goal_pose_it->header.stamp;

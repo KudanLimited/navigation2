@@ -50,7 +50,7 @@ void LatticeMotionTable::initMotionModel(
   SearchInfo & search_info)
 {
   size_x = size_x_in;
-  change_penalty = search_info.change_penalty;
+  change_penalty = search_info.left_right_change_penalty;
   non_straight_penalty = search_info.non_straight_penalty;
   cost_penalty = search_info.cost_penalty;
   reverse_penalty = search_info.reverse_penalty;
@@ -486,7 +486,7 @@ void NodeLattice::precomputeDistanceHeuristic(
 
 void NodeLattice::getNeighbors(
   std::function<bool(const uint64_t &,
-  nav2_smac_planner::NodeLattice * &)> & NeighborGetter,
+  nav2_smac_planner::NodeLattice*&)> & NeighborGetter,
   GridCollisionChecker * collision_checker,
   const bool & traverse_unknown,
   NodeVector & neighbors)
