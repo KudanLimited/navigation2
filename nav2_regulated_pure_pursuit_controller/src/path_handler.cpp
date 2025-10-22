@@ -34,7 +34,7 @@ PathHandler::PathHandler(
   tf2::Duration transform_tolerance,
   std::shared_ptr<tf2_ros::Buffer> tf,
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros)
-: transform_tolerance_(transform_tolerance), tf_(tf), costmap_ros_(costmap_ros)
+: transform_tolerance_(transform_tolerance), tf_(tf), costmap_ros_(costmap_ros), prev_track_segments_(false)
 {
 }
 
@@ -49,6 +49,7 @@ double PathHandler::getCostmapMaxExtent() const
 nav_msgs::msg::Path PathHandler::transformGlobalPlan(
   const geometry_msgs::msg::PoseStamped & pose,
   double max_robot_pose_search_dist,
+  bool track_segments,
   double segment_switch_proportion,
   bool reject_unit_path)
 {
@@ -60,6 +61,13 @@ nav_msgs::msg::Path PathHandler::transformGlobalPlan(
     throw nav2_core::InvalidPath("Received plan with length of one");
   }
 
+  // Since the track_segments parameter may change, cache the previous value
+  // and reset the prev_pose_index_ if it wasn't previously being used
+  if (!prev_track_segments_ && track_segments) {
+    prev_pose_index_ = 0;
+  }
+  prev_track_segments_ = track_segments;
+
   // let's get the pose of the robot in the frame of the plan
   geometry_msgs::msg::PoseStamped robot_pose;
   if (!transformPose(global_plan_.header.frame_id, pose, robot_pose)) {
@@ -70,43 +78,60 @@ nav_msgs::msg::Path PathHandler::transformGlobalPlan(
     nav2_util::geometry_utils::first_after_integrated_distance(
     global_plan_.poses.begin(), global_plan_.poses.end(), max_robot_pose_search_dist);
 
-  double prev_dist = std::numeric_limits<double>::max();
-  std::size_t pose_index = 0;
-  while (pose_index < global_plan_.poses.size()) {
-    const auto &point = global_plan_.poses[pose_index];
-    double dist =
-        std::hypot(robot_pose.pose.position.x - point.pose.position.x,
-                   robot_pose.pose.position.y - point.pose.position.y);
-    // std::cout << pose_index << "/" << global_plan_.poses.size() << ": " << dist << std::endl;
-    if (pose_index > 0 && dist > prev_dist && pose_index >= prev_pose_index_) {
-      pose_index--;
-      break;
+
+  // Find the current "closest" pose on the path to the robot, which can be done in two ways:
+  // 1. track_segments = true
+  //   - Keeps track of the current path segment the robot lies on
+  //   - Increments this when it passes the end of the segment
+  //2. track_segments = false
+  //   - Find the pose on the path closest to the current pose
+  std::vector<geometry_msgs::msg::PoseStamped>::const_iterator transformation_begin;
+
+  if (track_segments) {
+    double prev_dist = std::numeric_limits<double>::max();
+    std::size_t pose_index = 0;
+    while (pose_index < global_plan_.poses.size()) {
+      const auto &point = global_plan_.poses[pose_index];
+      double dist =
+          std::hypot(robot_pose.pose.position.x - point.pose.position.x,
+                     robot_pose.pose.position.y - point.pose.position.y);
+      if (pose_index > 0 && dist > prev_dist && pose_index >= prev_pose_index_) {
+        pose_index--;
+        break;
+      }
+      if (global_plan_.poses.begin() + pose_index == closest_pose_upper_bound) {
+        break;
+      }
+      prev_dist = dist;
+      pose_index++;
     }
-    if (global_plan_.poses.begin() + pose_index == closest_pose_upper_bound) {
-      break;
-    }
-    prev_dist = dist;
-    pose_index++;
-  }
 
-  if (prev_pose_index_ + 1 != pose_index) {
-    prev_pose_index_ = pose_index;
-  } else {
-    const auto &a_point = global_plan_.poses[prev_pose_index_].pose.position;
-    Eigen::Vector3d a(a_point.x, a_point.y, a_point.z);
-
-    const auto &b_point = global_plan_.poses[pose_index].pose.position;
-    Eigen::Vector3d b(b_point.x, b_point.y, b_point.z);
-
-    const auto& x_point = robot_pose.pose.position;
-    Eigen::Vector3d x(x_point.x, x_point.y, x_point.z);
-
-    double proportion = (b - a).dot(x - a) / (b - a).squaredNorm();;
-    if (proportion >= segment_switch_proportion) {
+    if (prev_pose_index_ + 1 != pose_index) {
       prev_pose_index_ = pose_index;
+    } else {
+      const auto &a_point = global_plan_.poses[prev_pose_index_].pose.position;
+      Eigen::Vector3d a(a_point.x, a_point.y, a_point.z);
+
+      const auto &b_point = global_plan_.poses[pose_index].pose.position;
+      Eigen::Vector3d b(b_point.x, b_point.y, b_point.z);
+
+      const auto& x_point = robot_pose.pose.position;
+      Eigen::Vector3d x(x_point.x, x_point.y, x_point.z);
+
+      double proportion = (b - a).dot(x - a) / (b - a).squaredNorm();;
+      if (proportion >= segment_switch_proportion) {
+        prev_pose_index_ = pose_index;
+      }
     }
+    transformation_begin = global_plan_.poses.begin() + prev_pose_index_;
+  } else {
+    transformation_begin =
+      nav2_util::geometry_utils::min_by(
+        global_plan_.poses.begin(), closest_pose_upper_bound,
+        [&robot_pose](const geometry_msgs::msg::PoseStamped & ps) {
+          return euclidean_distance(robot_pose, ps);
+        });
   }
-  auto transformation_begin = global_plan_.poses.begin() + prev_pose_index_;
 
   // Make sure we always have at least 2 points on the transformed plan and that we don't prune
   // the global plan below 2 points in order to have always enough point to interpolate the

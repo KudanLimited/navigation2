@@ -64,6 +64,7 @@ public:
   nav_msgs::msg::Path transformGlobalPlan(
     const geometry_msgs::msg::PoseStamped & pose,
     double max_robot_pose_search_dist,
+    bool track_segments = false,
     double segment_switch_proportion = 1.0,
     bool reject_unit_path = false);
 
@@ -98,6 +99,7 @@ protected:
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   nav_msgs::msg::Path global_plan_;
+  bool prev_track_segments_;
   std::size_t prev_pose_index_;
 };
 

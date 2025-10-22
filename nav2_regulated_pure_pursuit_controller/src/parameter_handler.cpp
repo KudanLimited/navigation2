@@ -108,6 +108,8 @@ ParameterHandler::ParameterHandler(
   declare_parameter_if_not_declared(
       node, plugin_name_ + ".slow_down_min_linear_vel", rclcpp::ParameterValue(0.0));
   declare_parameter_if_not_declared(
+      node, plugin_name_ + ".track_segments", rclcpp::ParameterValue(false));
+  declare_parameter_if_not_declared(
       node, plugin_name_ + ".segment_switch_proportion", rclcpp::ParameterValue(1.0));
 
   node->get_parameter(plugin_name_ + ".desired_linear_vel", params_.desired_linear_vel);
@@ -203,6 +205,7 @@ ParameterHandler::ParameterHandler(
     params_.slow_down_min_linear_vel = 0;
   }
 
+  node->get_parameter(plugin_name_ + ".track_segments", params_.track_segments);
   node->get_parameter(plugin_name_ + ".segment_switch_proportion", params_.segment_switch_proportion);
 
   if (params_.inflation_cost_scaling_factor <= 0.0) {

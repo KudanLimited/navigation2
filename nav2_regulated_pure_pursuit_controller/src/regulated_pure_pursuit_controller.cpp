@@ -185,6 +185,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   auto transformed_plan = path_handler_->transformGlobalPlan(
     pose,
     params_->max_robot_pose_search_dist,
+    params_->track_segments,
     params_->segment_switch_proportion,
     params_->interpolate_curvature_after_goal);
   global_path_pub_->publish(transformed_plan);
@@ -411,13 +412,7 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
   const nav_msgs::msg::Path & transformed_plan,
   bool interpolate_after_goal)
 {
-  // Find the first pose which is at a distance greater than the lookahead distance
-  auto goal_pose_it = std::find_if(
-    transformed_plan.poses.begin() + 1, transformed_plan.poses.end(), [&](const auto &ps) {
-      return hypot(ps.pose.position.x, ps.pose.position.y) >= lookahead_dist;
-    });
-
-  // Check if there is a direction change after the first segment
+  // Special case: Check if there is a direction change after the first segment
   if (transformed_plan.poses.size() >= 3) {
     const auto &a_point = transformed_plan.poses[0].pose.position;
     Eigen::Vector3d a(a_point.x, a_point.y, a_point.z);
@@ -430,6 +425,12 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
       return transformed_plan.poses[1];
     }
   }
+
+  // Find the first pose which is at a distance greater than the lookahead distance
+  auto goal_pose_it = std::find_if(
+    transformed_plan.poses.begin() + 1, transformed_plan.poses.end(), [&](const auto &ps) {
+      return hypot(ps.pose.position.x, ps.pose.position.y) >= lookahead_dist;
+    });
 
   // If the no pose is not far enough, take the last pose
   if (goal_pose_it == transformed_plan.poses.end()) {
@@ -468,8 +469,7 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
     auto prev_pose_it = std::prev(goal_pose_it);
     auto point = circleSegmentIntersection(
       prev_pose_it->pose.position,
-      goal_pose_it->pose.position,
-      lookahead_dist);
+      goal_pose_it->pose.position, lookahead_dist);
     geometry_msgs::msg::PoseStamped pose;
     pose.header.frame_id = prev_pose_it->header.frame_id;
     pose.header.stamp = goal_pose_it->header.stamp;
