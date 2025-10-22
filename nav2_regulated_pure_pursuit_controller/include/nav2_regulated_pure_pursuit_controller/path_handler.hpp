@@ -20,6 +20,7 @@
 #include <memory>
 #include <algorithm>
 #include <mutex>
+#include <optional>
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
@@ -82,7 +83,7 @@ public:
 
   void setPlan(const nav_msgs::msg::Path & path) {
     global_plan_ = path;
-    prev_pose_index_ = 0;
+    segment_index_ = std::nullopt;
   }
 
   nav_msgs::msg::Path getPlan() {return global_plan_;}
@@ -100,7 +101,7 @@ protected:
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   nav_msgs::msg::Path global_plan_;
   bool prev_track_segments_;
-  std::size_t prev_pose_index_;
+  std::optional<std::size_t> segment_index_;
 };
 
 }  // namespace nav2_regulated_pure_pursuit_controller

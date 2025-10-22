@@ -412,23 +412,21 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
   const nav_msgs::msg::Path & transformed_plan,
   bool interpolate_after_goal)
 {
-  // Special case: Check if there is a direction change after the first segment
-  if (transformed_plan.poses.size() >= 3) {
-    const auto &a_point = transformed_plan.poses[0].pose.position;
-    Eigen::Vector3d a(a_point.x, a_point.y, a_point.z);
-    const auto &b_point = transformed_plan.poses[1].pose.position;
-    Eigen::Vector3d b(b_point.x, b_point.y, b_point.z);
-    const auto &c_point = transformed_plan.poses[2].pose.position;
-    Eigen::Vector3d c(c_point.x, c_point.y, c_point.z);
+  // Check if there is a direction change, relative to where the platform is currently pointing
+  // If so, use the cusp as the lookahead point instead
+  if (transformed_plan.poses.size() >= 2) {
+    const auto & a = transformed_plan.poses[0].pose.position;
+    const auto & b = transformed_plan.poses[1].pose.position;
 
-    if ((b - a).dot(c - b) <= 0) {
+    // Already transformed to local frame, so just need to check if (a -> b) moves in the -x direction
+    if (b.x < a.x) {
       return transformed_plan.poses[1];
     }
   }
 
   // Find the first pose which is at a distance greater than the lookahead distance
   auto goal_pose_it = std::find_if(
-    transformed_plan.poses.begin() + 1, transformed_plan.poses.end(), [&](const auto &ps) {
+    transformed_plan.poses.begin(), transformed_plan.poses.end(), [&](const auto &ps) {
       return hypot(ps.pose.position.x, ps.pose.position.y) >= lookahead_dist;
     });
 
