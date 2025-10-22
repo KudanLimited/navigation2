@@ -191,7 +191,8 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   global_path_pub_->publish(transformed_plan);
 
   // Find look ahead distance and point on path and publish
-  double lookahead_dist = getLookAheadDistance(speed);
+  const double max_lookahead_dist = getLookAheadDistance(speed);
+  double lookahead_dist = max_lookahead_dist;
   double curv_lookahead_dist = params_->curvature_lookahead_dist;
 
   // Check for reverse driving
@@ -238,7 +239,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   const double dist_to_carrot_pose =
       std::hypot(carrot_pose.pose.position.x, carrot_pose.pose.position.y);
 
-  const double clamped_slow_down_distance = std::min(params_->slow_down_distance, lookahead_dist);
+  const double clamped_slow_down_distance = std::min(params_->slow_down_distance, max_lookahead_dist);
   if (dist_to_carrot_pose < clamped_slow_down_distance) {
     double slow_down_proportion = dist_to_carrot_pose / clamped_slow_down_distance;
     linear_vel = std::max(params_->slow_down_min_linear_vel, linear_vel * slow_down_proportion);
@@ -395,15 +396,10 @@ geometry_msgs::msg::Point RegulatedPurePursuitController::circleSegmentIntersect
   double dr2 = dx * dx + dy * dy;
   double D = x1 * y2 - x2 * y1;
 
-  // Augmentation to only return point within segment
-  double d1 = x1 * x1 + y1 * y1;
-  double d2 = x2 * x2 + y2 * y2;
-  double dd = d2 - d1;
-
   geometry_msgs::msg::Point p;
   double sqrt_term = std::sqrt(r * r * dr2 - D * D);
-  p.x = (D * dy + std::copysign(1.0, dd) * dx * sqrt_term) / dr2;
-  p.y = (-D * dx + std::copysign(1.0, dd) * dy * sqrt_term) / dr2;
+  p.x = (D * dy + dx * sqrt_term) / dr2;
+  p.y = (-D * dx + dy * sqrt_term) / dr2;
   return p;
 }
 
@@ -412,27 +408,51 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
   const nav_msgs::msg::Path & transformed_plan,
   bool interpolate_after_goal)
 {
-  // Check if there is a direction change, relative to where the platform is currently pointing
-  // If so, use the cusp as the lookahead point instead
-  if (transformed_plan.poses.size() >= 2) {
+#if 0
+  bool at_cusp = false;
+  if (transformed_plan.poses.size() >= 3) {
     const auto & a = transformed_plan.poses[0].pose.position;
     const auto & b = transformed_plan.poses[1].pose.position;
-
-    // Already transformed to local frame, so just need to check if (a -> b) moves in the -x direction
-    if (b.x < a.x) {
-      return transformed_plan.poses[1];
-    }
+    const auto & c = transformed_plan.poses[2].pose.position;
+    at_cusp = (b.x - a.x) * (c.x - b.x) < 0;
   }
 
-  // Find the first pose which is at a distance greater than the lookahead distance
+  std::vector<geometry_msgs::msg::PoseStamped>::const_iterator goal_pose_it;
+  std::vector<geometry_msgs::msg::PoseStamped>::const_iterator goal_pose_end;
+  if (at_cusp) {
+    std::cout << "GET LOOKAHEAD: AT CUSP" << std::endl;
+    const auto& cusp_position = transformed_plan.poses[1].pose.position;
+    double cusp_distance = hypot(cusp_position.x, cusp_position.y);
+    std::cout << "Cusp dist: " << cusp_distance << " | " << lookahead_dist << std::endl;
+    if (hypot(cusp_position.x, cusp_position.y) >= lookahead_dist) {
+      std::cout << "(above lookahead)" << std::endl;
+      goal_pose_it = transformed_plan.poses.begin() + 1;
+    } else {
+      std::cout << "(below lookahead)" << std::endl;
+      goal_pose_it = transformed_plan.poses.begin() + 2;
+    }
+    // Set "end" = 1 past the cusp point, so only the path up-to-and-including
+    // the cusp point is considered
+    goal_pose_end = transformed_plan.poses.begin() + 2;
+  } else {
+    goal_pose_it = std::find_if(
+      transformed_plan.poses.begin(), transformed_plan.poses.end(), [&](const auto &ps) {
+        return hypot(ps.pose.position.x, ps.pose.position.y) >= lookahead_dist;
+      });
+    goal_pose_end = transformed_plan.poses.end();
+  }
+#else
   auto goal_pose_it = std::find_if(
-    transformed_plan.poses.begin(), transformed_plan.poses.end(), [&](const auto &ps) {
+    transformed_plan.poses.begin()+1, transformed_plan.poses.end(), [&](const auto &ps) {
       return hypot(ps.pose.position.x, ps.pose.position.y) >= lookahead_dist;
     });
+#endif
 
   // If the no pose is not far enough, take the last pose
   if (goal_pose_it == transformed_plan.poses.end()) {
     if (interpolate_after_goal) {
+      std::cout << "All within lookahead + interpolate within goal" << std::endl;
+
       auto last_pose_it = std::prev(transformed_plan.poses.end());
       auto prev_last_pose_it = std::prev(last_pose_it);
 
@@ -456,9 +476,13 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
       interpolated_pose.pose.position = interpolated_position;
       return interpolated_pose;
     } else {
+      std::cout << "All within lookahead + return prev(goal_pos_end)" << std::endl;
+
       goal_pose_it = std::prev(transformed_plan.poses.end());
     }
   } else if (goal_pose_it != transformed_plan.poses.begin()) {
+    std::cout << "Interpolate on circle" << std::endl;
+
     // Find the point on the line segment between the two poses
     // that is exactly the lookahead distance away from the robot pose (the origin)
     // This can be found with a closed form for the intersection of a segment and a circle
@@ -473,6 +497,8 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
     pose.header.stamp = goal_pose_it->header.stamp;
     pose.pose.position = point;
     return pose;
+  } else {
+
   }
 
   return *goal_pose_it;

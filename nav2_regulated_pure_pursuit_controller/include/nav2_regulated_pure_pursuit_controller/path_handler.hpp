@@ -83,6 +83,7 @@ public:
 
   void setPlan(const nav_msgs::msg::Path & path) {
     global_plan_ = path;
+    global_plan_reset_ = true;
     segment_index_ = std::nullopt;
   }
 
@@ -100,6 +101,7 @@ protected:
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   nav_msgs::msg::Path global_plan_;
+  bool global_plan_reset_;
   bool prev_track_segments_;
   std::optional<std::size_t> segment_index_;
 };
