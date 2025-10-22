@@ -237,8 +237,10 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   const double dist_to_carrot_pose =
       std::hypot(carrot_pose.pose.position.x, carrot_pose.pose.position.y);
 
-  if (dist_to_carrot_pose < params_->slow_down_distance) {
-    linear_vel *= std::max(dist_to_carrot_pose / params_->slow_down_distance, params_->slow_down_min_proportion);
+  const double clamped_slow_down_distance = std::min(params_->slow_down_distance, lookahead_dist);
+  if (dist_to_carrot_pose < clamped_slow_down_distance) {
+    double slow_down_proportion = dist_to_carrot_pose / clamped_slow_down_distance;
+    linear_vel = std::max(params_->slow_down_min_linear_vel, linear_vel * slow_down_proportion);
   }
 
   // Make sure we're in compliance with basic constraints

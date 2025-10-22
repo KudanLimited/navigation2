@@ -63,7 +63,7 @@ struct Parameters
   double transform_tolerance;
   bool stateful;
   double slow_down_distance;
-  double slow_down_min_proportion;
+  double slow_down_min_linear_vel;
   double segment_switch_proportion;
 };
 
