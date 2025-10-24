@@ -64,8 +64,6 @@ struct Parameters
   bool stateful;
   double slow_down_distance;
   double slow_down_min_linear_vel;
-  bool track_segments;
-  double segment_switch_proportion;
 };
 
 /**
