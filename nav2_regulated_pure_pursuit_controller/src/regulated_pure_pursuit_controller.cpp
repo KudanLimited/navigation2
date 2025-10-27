@@ -234,7 +234,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 
   const double clamped_slow_down_distance = std::min(params_->slow_down_distance, lookahead_dist);
   if (carrot_dist < clamped_slow_down_distance) {
-    double slow_down_proportion = carrot_dist / clamped_slow_down_distance;
+    const double slow_down_proportion = carrot_dist / clamped_slow_down_distance;
     linear_vel = std::max(params_->slow_down_min_linear_vel, linear_vel * slow_down_proportion);
   }
 
