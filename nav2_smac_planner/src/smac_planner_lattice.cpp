@@ -97,7 +97,8 @@ void SmacPlannerLattice::configure(
   node->get_parameter(name + ".reverse_penalty", _search_info.reverse_penalty);
   nav2_util::declare_parameter_if_not_declared(
     node, name + ".forward_reverse_change_penalty", rclcpp::ParameterValue(0.05));
-  node->get_parameter(name + ".forward_reverse_change_penalty", _search_info.forward_reverse_change_penalty);
+  node->get_parameter(name + ".forward_reverse_change_penalty",
+      _search_info.forward_reverse_change_penalty);
   nav2_util::declare_parameter_if_not_declared(
     node, name + ".left_right_change_penalty", rclcpp::ParameterValue(0.05));
   node->get_parameter(name + ".left_right_change_penalty", _search_info.left_right_change_penalty);

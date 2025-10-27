@@ -429,8 +429,9 @@ float NodeHybrid::getTraversalCost(const NodePtr & child)
   }
 
   {
-    bool is_forward = (int)getTurnDirection() <= (int)TurnDirection::RIGHT;
-    bool child_forward = (int)child_turn_dir <= (int)TurnDirection::RIGHT;
+    bool is_forward =
+      static_cast<int>(getTurnDirection()) <= static_cast<int>(TurnDirection::RIGHT);
+    bool child_forward = static_cast<int>(child_turn_dir) <= static_cast<int>(TurnDirection::RIGHT);
     if (is_forward != child_forward) {
       travel_cost += travel_cost_raw * motion_table.forward_reverse_change_penalty;
     }

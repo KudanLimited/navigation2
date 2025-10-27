@@ -486,7 +486,7 @@ void NodeLattice::precomputeDistanceHeuristic(
 
 void NodeLattice::getNeighbors(
   std::function<bool(const uint64_t &,
-  nav2_smac_planner::NodeLattice*&)> & NeighborGetter,
+  nav2_smac_planner::NodeLattice * &)> & NeighborGetter,
   GridCollisionChecker * collision_checker,
   const bool & traverse_unknown,
   NodeVector & neighbors)
