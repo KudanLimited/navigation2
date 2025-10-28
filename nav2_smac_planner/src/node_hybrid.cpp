@@ -417,24 +417,41 @@ float NodeHybrid::getTraversalCost(const NodePtr & child)
       (motion_table.travel_distance_reward + motion_table.cost_penalty * normalized_cost);
   }
 
-  travel_cost = travel_cost_raw;
-
-  if (child_turn_dir != TurnDirection::FORWARD && child_turn_dir != TurnDirection::REVERSE) {
-    // New motion is a curved motion
-    travel_cost += travel_cost_raw * motion_table.non_straight_penalty;
-    if (getTurnDirection() != child_turn_dir) {
-      // Changes direction: penalize wiggling
-      travel_cost += travel_cost_raw * motion_table.left_right_change_penalty;
-    }
+  if (child_turn_dir == TurnDirection::FORWARD || child_turn_dir == TurnDirection::REVERSE) {
+    travel_cost = travel_cost_raw;
+  } else {
+    travel_cost = travel_cost_raw * motion_table.non_straight_penalty;
   }
 
-  {
-    bool is_forward =
-      static_cast<int>(getTurnDirection()) <= static_cast<int>(TurnDirection::RIGHT);
-    bool child_forward = static_cast<int>(child_turn_dir) <= static_cast<int>(TurnDirection::RIGHT);
-    if (is_forward != child_forward) {
-      travel_cost += travel_cost_raw * motion_table.forward_reverse_change_penalty;
-    }
+  const bool is_forward =
+    getTurnDirection() == TurnDirection::RIGHT ||
+    getTurnDirection() == TurnDirection::FORWARD ||
+    getTurnDirection() == TurnDirection::LEFT;
+  const bool is_reverse = !is_forward && getTurnDirection() != TurnDirection::UNKNOWN;
+  // If equal to UNKNOWN, neither is true
+
+  const bool child_forward =
+    child_turn_dir == TurnDirection::RIGHT ||
+    child_turn_dir == TurnDirection::FORWARD ||
+    child_turn_dir == TurnDirection::LEFT;
+  const bool child_reverse = !child_forward && child_turn_dir != TurnDirection::UNKNOWN;
+  // If equal to UNKNOWN, neither is true
+
+  // Penalise changes between forwards and reverse
+  if (is_forward && child_reverse || is_reverse && child_forward) {
+    travel_cost += travel_cost_raw * motion_table.forward_reverse_change_penalty;
+  }
+
+  // Penalise wiggling (left/right changes) if:
+  // - The parent and child node are both forward or both reverse
+  // - And: The child is turning left/right, but the parent isn't turning in the same direction
+
+  const bool same_direction = (is_forward && child_forward) || (is_reverse && child_reverse);
+  const bool child_turning =
+    (child_turn_dir != TurnDirection::FORWARD && child_turn_dir != TurnDirection::REVERSE);
+
+  if (same_direction && child_turning && getTurnDirection() != child_turn_dir) {
+    travel_cost += travel_cost_raw * motion_table.left_right_change_penalty;
   }
 
   if (child_turn_dir == TurnDirection::REV_RIGHT ||
@@ -442,7 +459,7 @@ float NodeHybrid::getTraversalCost(const NodePtr & child)
     child_turn_dir == TurnDirection::REVERSE)
   {
     // reverse direction
-    travel_cost += travel_cost_raw * motion_table.reverse_penalty;
+    travel_cost *= motion_table.reverse_penalty;
   }
 
   return travel_cost;
