@@ -193,12 +193,14 @@ protected:
    * @param lookahead_dist Optimal lookahead distance
    * @param path Current global path
    * @param interpolate_after_goal If true, interpolate the lookahead point after the goal based
+   * @param allow_reversing If true, the lookahead point will stop at points where the direction changes
    * on the orientation given by the position of the last two pose of the path
    * @return Lookahead point
    */
   geometry_msgs::msg::PoseStamped getLookAheadPoint(
     const double &, const nav_msgs::msg::Path &,
-    bool interpolate_after_goal = false);
+    bool interpolate_after_goal = false,
+    bool allow_reversing = false);
 
   /**
    * @brief checks for the cusp position
