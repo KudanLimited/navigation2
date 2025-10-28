@@ -13,13 +13,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <Eigen/Geometry>
 #include <algorithm>
 #include <string>
 #include <limits>
 #include <memory>
 #include <vector>
 #include <utility>
-#include <Eigen/Geometry>
 
 #include "angles/angles.h"
 #include "nav2_regulated_pure_pursuit_controller/regulated_pure_pursuit_controller.hpp"
@@ -403,7 +403,7 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
 
   auto goal_pose_it = transformed_plan.poses.begin() + 1;
   for (; goal_pose_it != transformed_plan.poses.end(); goal_pose_it++) {
-    const auto& point = goal_pose_it->pose.position;
+    const auto & point = goal_pose_it->pose.position;
     const double dist = hypot(point.x, point.y);
 
     if (dist >= lookahead_dist) {
@@ -415,7 +415,9 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
     }
 
     // Otherwise, check if there is a cusp and return this as the lookahead point
-    if (std::next(goal_pose_it) == transformed_plan.poses.end() || goal_pose_it == transformed_plan.poses.begin()) {
+    if (std::next(goal_pose_it) == transformed_plan.poses.end() ||
+      goal_pose_it == transformed_plan.poses.begin())
+    {
       continue;
     }
 
@@ -426,7 +428,7 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
     const Eigen::Vector3d b(b_msg.x, b_msg.y, b_msg.z);
     const Eigen::Vector3d c(c_msg.x, c_msg.y, c_msg.z);
 
-    if ((b-a).dot(c-b) < 0) {
+    if ((b - a).dot(c - b) < 0) {
       return *goal_pose_it;
     }
   }
