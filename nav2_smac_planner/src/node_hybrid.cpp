@@ -406,7 +406,6 @@ float NodeHybrid::getTraversalCost(const NodePtr & child)
 
   const TurnDirection & child_turn_dir = child->getTurnDirection();
   float travel_cost_raw = motion_table.travel_costs[child->getMotionPrimitiveIndex()];
-  float travel_cost = 0.0;
 
   if (motion_table.use_quadratic_cost_penalty) {
     travel_cost_raw *=
@@ -417,49 +416,56 @@ float NodeHybrid::getTraversalCost(const NodePtr & child)
       (motion_table.travel_distance_reward + motion_table.cost_penalty * normalized_cost);
   }
 
-  if (child_turn_dir == TurnDirection::FORWARD || child_turn_dir == TurnDirection::REVERSE) {
-    travel_cost = travel_cost_raw;
-  } else {
-    travel_cost = travel_cost_raw * motion_table.non_straight_penalty;
+  // Special case: return early if the child turn direction is unknown
+  if (child_turn_dir == TurnDirection::UNKNOWN) {
+    return travel_cost_raw;
   }
 
-  const bool is_forward =
-    getTurnDirection() == TurnDirection::RIGHT ||
-    getTurnDirection() == TurnDirection::FORWARD ||
-    getTurnDirection() == TurnDirection::LEFT;
-  const bool is_reverse = !is_forward && getTurnDirection() != TurnDirection::UNKNOWN;
-  // If equal to UNKNOWN, neither is true
+  // Adjust the travel cost depending on the child direction
 
   const bool child_forward =
     child_turn_dir == TurnDirection::RIGHT ||
     child_turn_dir == TurnDirection::FORWARD ||
     child_turn_dir == TurnDirection::LEFT;
-  const bool child_reverse = !child_forward && child_turn_dir != TurnDirection::UNKNOWN;
-  // If equal to UNKNOWN, neither is true
 
-  // Penalise changes between forwards and reverse
-  if (is_forward && child_reverse || is_reverse && child_forward) {
-    travel_cost += travel_cost_raw * motion_table.forward_reverse_change_penalty;
-  }
-
-  // Penalise wiggling (left/right changes) if:
-  // - The parent and child node are both forward or both reverse
-  // - And: The child is turning left/right, but the parent isn't turning in the same direction
-
-  const bool same_direction = (is_forward && child_forward) || (is_reverse && child_reverse);
   const bool child_turning =
     (child_turn_dir != TurnDirection::FORWARD && child_turn_dir != TurnDirection::REVERSE);
 
-  if (same_direction && child_turning && getTurnDirection() != child_turn_dir) {
-    travel_cost += travel_cost_raw * motion_table.left_right_change_penalty;
+  // Scale the entire travel cost by the reverse penalty, so scale the travel_cost_raw
+  if (!child_forward) {
+    travel_cost_raw *= motion_table.reverse_penalty;
   }
 
-  if (child_turn_dir == TurnDirection::REV_RIGHT ||
-    child_turn_dir == TurnDirection::REV_LEFT ||
-    child_turn_dir == TurnDirection::REVERSE)
-  {
-    // reverse direction
-    travel_cost *= motion_table.reverse_penalty;
+  // Define the initial travel cost
+  float travel_cost;
+  if (child_turning) {
+    // If turning, multiply by the non_straight_penalty
+    // Only apply to the base cost, so don't multiply travel_cost_raw
+    travel_cost = travel_cost_raw * motion_table.non_straight_penalty;
+  } else {
+    travel_cost = travel_cost_raw;
+  }
+
+  // Special case: return early if the parent direction is unknown
+  if (getTurnDirection() == TurnDirection::UNKNOWN) {
+    return travel_cost;
+  }
+
+  const bool parent_forward =
+    getTurnDirection() == TurnDirection::RIGHT ||
+    getTurnDirection() == TurnDirection::FORWARD ||
+    getTurnDirection() == TurnDirection::LEFT;
+
+  if (parent_forward != child_forward) {
+    // Penalise changes between forward and reverse
+    travel_cost += travel_cost_raw * motion_table.forward_reverse_change_penalty;
+
+  } else if (child_turning && getTurnDirection() != child_turn_dir) {
+    // Penalise wiggling if:
+    // - The parent and child are in the same direction
+    // - The child is turning left/right
+    // - The parent isn't turning in the same direction
+    travel_cost += travel_cost_raw * motion_table.left_right_change_penalty;
   }
 
   return travel_cost;
