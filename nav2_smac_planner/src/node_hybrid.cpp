@@ -60,7 +60,8 @@ void HybridMotionTable::initDubin(
   SearchInfo & search_info)
 {
   size_x = size_x_in;
-  change_penalty = search_info.change_penalty;
+  forward_reverse_change_penalty = search_info.forward_reverse_change_penalty;
+  left_right_change_penalty = search_info.left_right_change_penalty;
   non_straight_penalty = search_info.non_straight_penalty;
   cost_penalty = search_info.cost_penalty;
   reverse_penalty = search_info.reverse_penalty;
@@ -187,7 +188,8 @@ void HybridMotionTable::initReedsShepp(
   SearchInfo & search_info)
 {
   size_x = size_x_in;
-  change_penalty = search_info.change_penalty;
+  forward_reverse_change_penalty = search_info.forward_reverse_change_penalty;
+  left_right_change_penalty = search_info.left_right_change_penalty;
   non_straight_penalty = search_info.non_straight_penalty;
   cost_penalty = search_info.cost_penalty;
   reverse_penalty = search_info.reverse_penalty;
@@ -404,7 +406,6 @@ float NodeHybrid::getTraversalCost(const NodePtr & child)
 
   const TurnDirection & child_turn_dir = child->getTurnDirection();
   float travel_cost_raw = motion_table.travel_costs[child->getMotionPrimitiveIndex()];
-  float travel_cost = 0.0;
 
   if (motion_table.use_quadratic_cost_penalty) {
     travel_cost_raw *=
@@ -415,26 +416,55 @@ float NodeHybrid::getTraversalCost(const NodePtr & child)
       (motion_table.travel_distance_reward + motion_table.cost_penalty * normalized_cost);
   }
 
-  if (child_turn_dir == TurnDirection::FORWARD || child_turn_dir == TurnDirection::REVERSE) {
-    // New motion is a straight motion, no additional costs to be applied
-    travel_cost = travel_cost_raw;
-  } else {
-    if (getTurnDirection() == child_turn_dir) {
-      // Turning motion but keeps in same direction: encourages to commit to turning if starting it
-      travel_cost = travel_cost_raw * motion_table.non_straight_penalty;
-    } else {
-      // Turning motion and changing direction: penalizes wiggling
-      travel_cost = travel_cost_raw *
-        (motion_table.non_straight_penalty + motion_table.change_penalty);
-    }
+  // Special case: return early if the child turn direction is unknown
+  if (child_turn_dir == TurnDirection::UNKNOWN) {
+    return travel_cost_raw;
   }
 
-  if (child_turn_dir == TurnDirection::REV_RIGHT ||
-    child_turn_dir == TurnDirection::REV_LEFT ||
-    child_turn_dir == TurnDirection::REVERSE)
-  {
-    // reverse direction
-    travel_cost *= motion_table.reverse_penalty;
+  // Adjust the travel cost depending on the child direction
+
+  const bool child_forward =
+    child_turn_dir == TurnDirection::RIGHT ||
+    child_turn_dir == TurnDirection::FORWARD ||
+    child_turn_dir == TurnDirection::LEFT;
+
+  const bool child_turning =
+    (child_turn_dir != TurnDirection::FORWARD && child_turn_dir != TurnDirection::REVERSE);
+
+  // Scale the entire travel cost by the reverse penalty, so scale the travel_cost_raw
+  if (!child_forward) {
+    travel_cost_raw *= motion_table.reverse_penalty;
+  }
+
+  // Define the initial travel cost
+  float travel_cost;
+  if (child_turning) {
+    // If turning, multiply by the non_straight_penalty
+    // Only apply to the base cost, so don't multiply travel_cost_raw
+    travel_cost = travel_cost_raw * motion_table.non_straight_penalty;
+  } else {
+    travel_cost = travel_cost_raw;
+  }
+
+  // Special case: return early if the parent direction is unknown
+  if (getTurnDirection() == TurnDirection::UNKNOWN) {
+    return travel_cost;
+  }
+
+  const bool parent_forward =
+    getTurnDirection() == TurnDirection::RIGHT ||
+    getTurnDirection() == TurnDirection::FORWARD ||
+    getTurnDirection() == TurnDirection::LEFT;
+
+  if (parent_forward != child_forward) {
+    // Penalise changes between forward and reverse
+    travel_cost += travel_cost_raw * motion_table.forward_reverse_change_penalty;
+  } else if (child_turning && getTurnDirection() != child_turn_dir) {
+    // Penalise wiggling if:
+    // - The parent and child are in the same direction
+    // - The child is turning left/right
+    // - The parent isn't turning in the same direction
+    travel_cost += travel_cost_raw * motion_table.left_right_change_penalty;
   }
 
   return travel_cost;
