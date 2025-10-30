@@ -50,7 +50,8 @@ void LatticeMotionTable::initMotionModel(
   SearchInfo & search_info)
 {
   size_x = size_x_in;
-  change_penalty = search_info.left_right_change_penalty;
+  left_right_change_penalty = search_info.left_right_change_penalty;
+  forward_reverse_change_penalty = search_info.forward_reverse_change_penalty;
   non_straight_penalty = search_info.non_straight_penalty;
   cost_penalty = search_info.cost_penalty;
   reverse_penalty = search_info.reverse_penalty;
@@ -318,18 +319,27 @@ float NodeLattice::getTraversalCost(const NodePtr & child)
   float travel_cost_raw = prim_length *
     (motion_table.travel_distance_reward + motion_table.cost_penalty * normalized_cost);
 
-  if (transition_prim->arc_length < 0.001) {
-    // New motion is a straight motion, no additional costs to be applied
-    travel_cost = travel_cost_raw;
+  const bool parent_turning = (prim->arc_length >= 0.001);
+  const bool child_turning = (transition_prim->arc_length >= 0.001);
+  // same_turn_direction = true if both are turning AND turning in the same direction
+  const bool same_turn_direction =
+    parent_turning && child_turning && prim->left_turn == transition_prim->left_turn;
+
+  if (child_turning) {
+    travel_cost = travel_cost_raw * motion_table.non_straight_penalty;
   } else {
-    if (prim->left_turn == transition_prim->left_turn) {
-      // Turning motion but keeps in same general direction: encourages to commit to actions
-      travel_cost = travel_cost_raw * motion_table.non_straight_penalty;
-    } else {
-      // Turning motion and velocity directions: penalizes wiggling.
-      travel_cost = travel_cost_raw *
-        (motion_table.non_straight_penalty + motion_table.change_penalty);
-    }
+    travel_cost = travel_cost_raw;
+  }
+
+  if (isBackward() != child->isBackward()) {
+    // Penalise changes between forward and reverse
+    travel_cost += travel_cost_raw * motion_table.forward_reverse_change_penalty;
+  } else if (child_turning && !same_turn_direction) {
+    // Penalise wiggling if:
+    // - The parent and child are in the same direction
+    // - The child is turning left/right
+    // - The parent isn't turning in the same direction
+    travel_cost += travel_cost_raw * motion_table.left_right_change_penalty;
   }
 
   // If backwards flag is set, this primitive is moving in reverse
