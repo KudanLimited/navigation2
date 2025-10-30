@@ -91,6 +91,9 @@ Note: The maximum allowed time to collision is thresholded by the lookahead poin
 | `max_angular_accel` | Maximum allowable angular acceleration while rotating to heading, if enabled | 
 | `max_robot_pose_search_dist` | Maximum integrated distance along the path to bound the search for the closest pose to the robot. This is set by default to the maximum costmap extent, so it shouldn't be set manually unless there are loops within the local costmap. | 
 | `interpolate_curvature_after_goal` | Needs use_fixed_curvature_lookahead to be true. Interpolate a carrot after the goal dedicated to the curvate calculation (to avoid oscilaltions at the end of the path) | 
+| `stateful` | Enables stateful goal handling behavior. When set to true, the controller will persist the goal state once the robot reaches the XY tolerance. It will then focus on aligning to the goal heading without reverting to XY position corrections. |
+| `slow_down_distance` | When approaching a end-point or cusp on the path, if the distance to the lookahead point falls below this value the desired speed will scale linearly down to zero. Set to `0.0` to disable. Will always be clamped to the current lookahead distance. |
+| `slow_down_min_linear_vel` | Applies a lower limit on the reduced desired speed within the `slow_down_distance`. Useful for cases where the robot requires some minimum desired speed to move forward. |
 
 Example fully-described XML with default parameter values:
 
@@ -142,6 +145,8 @@ controller_server:
       cost_scaling_dist: 0.3
       cost_scaling_gain: 1.0
       inflation_cost_scaling_factor: 3.0
+      slow_down_distance: 0.4
+      slow_down_min_linear_vel: 0.0
 ```
 
 ## Topics

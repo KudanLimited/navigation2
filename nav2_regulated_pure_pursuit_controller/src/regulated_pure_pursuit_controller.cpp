@@ -230,6 +230,14 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 
   linear_vel = params_->desired_linear_vel;
 
+  const double carrot_dist = hypot(carrot_pose.pose.position.x, carrot_pose.pose.position.y);
+
+  const double clamped_slow_down_distance = std::min(params_->slow_down_distance, lookahead_dist);
+  if (carrot_dist < clamped_slow_down_distance) {
+    const double slow_down_proportion = carrot_dist / clamped_slow_down_distance;
+    linear_vel = std::max(params_->slow_down_min_linear_vel, linear_vel * slow_down_proportion);
+  }
+
   // Make sure we're in compliance with basic constraints
   // For shouldRotateToPath, using x_vel_sign in order to support allow_reversing
   // and rotate_to_path_carrot_pose for the direction carrot pose:
@@ -272,7 +280,6 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   }
 
   // Collision checking on this velocity heading
-  const double & carrot_dist = hypot(carrot_pose.pose.position.x, carrot_pose.pose.position.y);
   if (params_->use_collision_detection &&
     collision_checker_->isCollisionImminent(pose, linear_vel, angular_vel, carrot_dist))
   {
