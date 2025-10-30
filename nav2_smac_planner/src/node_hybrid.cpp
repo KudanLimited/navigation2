@@ -459,7 +459,6 @@ float NodeHybrid::getTraversalCost(const NodePtr & child)
   if (parent_forward != child_forward) {
     // Penalise changes between forward and reverse
     travel_cost += travel_cost_raw * motion_table.forward_reverse_change_penalty;
-
   } else if (child_turning && getTurnDirection() != child_turn_dir) {
     // Penalise wiggling if:
     // - The parent and child are in the same direction
