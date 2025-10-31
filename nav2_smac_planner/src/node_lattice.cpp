@@ -321,22 +321,18 @@ float NodeLattice::getTraversalCost(const NodePtr & child)
 
   const bool parent_turning = (prim->arc_length >= 0.001);
   const bool child_turning = (transition_prim->arc_length >= 0.001);
-  // same_turn_direction = true if both are turning AND turning in the same direction
-  const bool same_turn_direction =
-    parent_turning && child_turning && prim->left_turn == transition_prim->left_turn;
 
   if (child_turning) {
     travel_cost = travel_cost_raw * motion_table.non_straight_penalty;
   } else {
     travel_cost = travel_cost_raw;
   }
-
   if (isBackward() != child->isBackward()) {
     // Penalise changes between forward and reverse
     travel_cost += travel_cost_raw * motion_table.forward_reverse_change_penalty;
-  } else if (child_turning && !same_turn_direction) {
+  }
+  if (child_turning && prim->left_turn != transition_prim->left_turn) {
     // Penalise wiggling if:
-    // - The parent and child are in the same direction
     // - The child is turning left/right
     // - The parent isn't turning in the same direction
     travel_cost += travel_cost_raw * motion_table.left_right_change_penalty;
