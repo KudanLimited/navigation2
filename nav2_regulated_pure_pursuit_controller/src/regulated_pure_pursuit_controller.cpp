@@ -191,7 +191,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   const double curv_lookahead_dist = params_->curvature_lookahead_dist;
 
   // Get the particular point on the path at the lookahead distance
-  const geometry_msgs::msg::PoseStamped carrot_pose = getLookAheadPoint(
+  auto carrot_pose = getLookAheadPoint(
     lookahead_dist, transformed_plan, false, params_->allow_reversing);
   auto rotate_to_path_carrot_pose = carrot_pose;
   carrot_pub_->publish(createCarrotMsg(carrot_pose));
@@ -368,7 +368,6 @@ geometry_msgs::msg::Point RegulatedPurePursuitController::circleSegmentIntersect
   // which results in something that is just a reformulation of the quadratic formula.
   // Interactive illustration in doc/circle-segment-intersection.ipynb as well as at
   // https://www.desmos.com/calculator/td5cwbuocd
-
   double x1 = p1.x;
   double x2 = p2.x;
   double y1 = p1.y;
@@ -401,25 +400,39 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
     return transformed_plan.poses.front();
   }
 
+  // Set goal_pose_it to the first point outside the lookahead_dist
+  // Special case:
+  //   If allow_reversing is true, then while searching for this point check for
+  //   cusp points (where the direction changes) and early return the cusp point as
+  //   the lookahead point instead
+
   auto goal_pose_it = transformed_plan.poses.begin() + 1;
+
   for (; goal_pose_it != transformed_plan.poses.end(); goal_pose_it++) {
     const auto & point = goal_pose_it->pose.position;
     const double dist = hypot(point.x, point.y);
 
+    // Check if the point is outside the lookahead distance
     if (dist >= lookahead_dist) {
       break;
     }
 
+    // If allow_reversing is false, no need to do the following cusp point checks
     if (!allow_reversing) {
       continue;
     }
 
-    // Otherwise, check if there is a cusp and return this as the lookahead point
+    // A cusp point must have a point before and after it, cannot do the cusp point
+    // checks if this doesn't hold
     if (std::next(goal_pose_it) == transformed_plan.poses.end() ||
       goal_pose_it == transformed_plan.poses.begin())
     {
       continue;
     }
+
+    // For a series of points (a, b, c) point b is a cusp point if:
+    // - The displacement (b -> c) is in the opposite direction to (a -> b)
+    // - Holds if (b - c).dot(b - a) < 0
 
     const auto & a_msg = std::prev(goal_pose_it)->pose.position;
     const auto & b_msg = goal_pose_it->pose.position;
@@ -433,7 +446,10 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
     }
   }
 
-  // There is no pose outside the lookahead distance
+  // There is no pose outside the lookahead distance, two ways to handle this:
+  // - If interpolate_after_goal is false, return the final point in the path
+  // - Otherwise project forward the lookahead-point
+
   if (goal_pose_it == transformed_plan.poses.end()) {
     if (!interpolate_after_goal) {
       // If not interpolating after the goal, simply return the final point
@@ -464,11 +480,15 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
     return interpolated_pose;
   }
 
+  // Have two neighboring points inside and outside the lookahead distance
+  // (goal_pose_it and std::prev(goal_pose_it))
+
   // Find the point on the line segment between the two poses
   // that is exactly the lookahead distance away from the robot pose (the origin)
   // This can be found with a closed form for the intersection of a segment and a circle
   // Because of the way we did the std::find_if, prev_pose is guaranteed to be inside the circle,
   // and goal_pose is guaranteed to be outside the circle.
+
   auto prev_pose_it = std::prev(goal_pose_it);
   auto point = circleSegmentIntersection(
     prev_pose_it->pose.position,

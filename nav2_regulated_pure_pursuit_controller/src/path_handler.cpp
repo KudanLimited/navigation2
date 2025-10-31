@@ -66,9 +66,13 @@ nav_msgs::msg::Path PathHandler::transformGlobalPlan(
     throw nav2_core::ControllerTFError("Unable to transform robot pose into global plan's frame");
   }
 
-  if (global_plan_reset_) {
-    // If the global plan has been updated, find the closest pose and erase all preceding poses
+  // The global plan should be always pruned, such that the first point is the start of
+  // the currently tracked segment
+  // - Whenever the global plan has first been received, need to search for the closest point
+  //   for the initial prune
+  // - For subsequent calls to this function, just need to check if the segment has been passed
 
+  if (global_plan_reset_) {
     auto closest_pose_upper_bound =
       nav2_util::geometry_utils::first_after_integrated_distance(
       global_plan_.poses.begin(), global_plan_.poses.end(), max_robot_pose_search_dist);
@@ -80,8 +84,9 @@ nav_msgs::msg::Path PathHandler::transformGlobalPlan(
       });
 
     if (reject_unit_path && std::next(closest_pose) == global_plan_.poses.end()) {
-      // If reject_unit_path == true, guaranteed that there are at least 2 points, so there is a
-      // point before the final point in the path, can safely decrement closest_pose
+      // If reject_unit_path == true, guaranteed that there are at least 2 points
+      // Therefore there is a point before the final point in the path, so
+      // can safely decrement closest_pose
       closest_pose--;
     }
 
@@ -90,8 +95,9 @@ nav_msgs::msg::Path PathHandler::transformGlobalPlan(
   }
 
   // Prune the first point on the path whenever the corresponding segment is passed
-  // If already at the final point (size = 1), then no pruning required
-  if (global_plan_.poses.size() >= 2) {
+  // If at the final point (or reject_unit_path and down to the final 2 points) then
+  // there is no more pruning to be done
+  if (global_plan_.poses.size() > (reject_unit_path ? 2 : 1)) {
     const auto & a_msg = global_plan_.poses[0].pose.position;
     const auto & b_msg = global_plan_.poses[1].pose.position;
     const auto & x_msg = robot_pose.pose.position;
@@ -99,18 +105,16 @@ nav_msgs::msg::Path PathHandler::transformGlobalPlan(
     const Eigen::Vector3d b(b_msg.x, b_msg.y, b_msg.z);
     const Eigen::Vector3d x(x_msg.x, x_msg.y, x_msg.z);
 
-    Eigen::Vector3d ab = (b - a);
+    const Eigen::Vector3d ab = (b - a);
     if (ab.dot(x - a) > ab.dot(ab)) {
       global_plan_.poses.erase(global_plan_.poses.begin());
     }
   }
 
   // We'll discard points on the plan that are outside the local costmap
-  // ensuring at least 2 points
   const double max_costmap_extent = getCostmapMaxExtent();
   auto transformation_end = std::find_if(
-    global_plan_.poses.begin(),
-    global_plan_.poses.end(),
+    global_plan_.poses.begin(), global_plan_.poses.end(),
     [&](const auto & global_plan_pose) {
       return euclidean_distance(global_plan_pose, robot_pose) > max_costmap_extent;
     });
