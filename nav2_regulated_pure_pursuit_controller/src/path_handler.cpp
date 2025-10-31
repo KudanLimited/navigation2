@@ -105,11 +105,11 @@ nav_msgs::msg::Path PathHandler::transformGlobalPlan(
     }
   }
 
-  // We'll discard points on the plan that are outside the local costmap, but always
+  // We'll discard points on the plan that are outside the local costmap
   // ensuring at least 2 points
   const double max_costmap_extent = getCostmapMaxExtent();
   auto transformation_end = std::find_if(
-    global_plan_.poses.begin() + 2,
+    global_plan_.poses.begin(),
     global_plan_.poses.end(),
     [&](const auto & global_plan_pose) {
       return euclidean_distance(global_plan_pose, robot_pose) > max_costmap_extent;
