@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <Eigen/Geometry>
 #include <algorithm>
 #include <string>
 #include <limits>
@@ -390,6 +389,18 @@ geometry_msgs::msg::Point RegulatedPurePursuitController::circleSegmentIntersect
   return p;
 }
 
+static geometry_msgs::msg::Point operator-(const geometry_msgs::msg::Point & lhs, const geometry_msgs::msg::Point & rhs) {
+  geometry_msgs::msg::Point result;
+  result.x = lhs.x - rhs.x;
+  result.x = lhs.y - rhs.y;
+  result.x = lhs.z - rhs.z;
+  return result;
+}
+
+static double dotProduct(const geometry_msgs::msg::Point & a, const geometry_msgs::msg::Point & b) {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
 geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoint(
   const double & lookahead_dist,
   const nav_msgs::msg::Path & transformed_plan,
@@ -400,13 +411,15 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
     return transformed_plan.poses.front();
   }
 
-  // Set goal_pose_it to the first point outside the lookahead_dist
-  // Special case:
-  //   If allow_reversing is true, then while searching for this point check for
-  //   cusp points (where the direction changes) and early return the cusp point as
-  //   the lookahead point instead
+  // Set goal_pose_it to the first point outside the lookahead_dist, excluding the first point
+  // Special cases:
+  //   - If allow_reversing is true, then while searching for this point check for
+  //     cusp points (where the direction changes) and early return the cusp point as
+  //     the lookahead point instead
+  //   - If goal_pose_it == second point, and first point is also outside the lookahead distance
+  //     then need extra logic for checking if the lookahead circle still intersects the segment
 
-  auto goal_pose_it = transformed_plan.poses.begin() + 1;
+  auto goal_pose_it = next(transformed_plan.poses.begin());
 
   for (; goal_pose_it != transformed_plan.poses.end(); goal_pose_it++) {
     const auto & point = goal_pose_it->pose.position;
@@ -417,32 +430,26 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
       break;
     }
 
-    // If allow_reversing is false, no need to do the following cusp point checks
-    if (!allow_reversing) {
-      continue;
-    }
+    if (allow_reversing) {
+      // A cusp point must have a point before and after it, cannot do the cusp point
+      // checks if this doesn't hold
+      if (std::next(goal_pose_it) == transformed_plan.poses.end() ||
+        goal_pose_it == transformed_plan.poses.begin())
+      {
+        continue;
+      }
 
-    // A cusp point must have a point before and after it, cannot do the cusp point
-    // checks if this doesn't hold
-    if (std::next(goal_pose_it) == transformed_plan.poses.end() ||
-      goal_pose_it == transformed_plan.poses.begin())
-    {
-      continue;
-    }
+      // For a series of points (a, b, c) point b is a cusp point if:
+      // - The displacement (b -> c) is in the opposite direction to (a -> b)
+      // - Holds if dotProduct(b - c, b - a) < 0
 
-    // For a series of points (a, b, c) point b is a cusp point if:
-    // - The displacement (b -> c) is in the opposite direction to (a -> b)
-    // - Holds if (b - c).dot(b - a) < 0
+      const auto & a = std::prev(goal_pose_it)->pose.position;
+      const auto & b = goal_pose_it->pose.position;
+      const auto & c = std::next(goal_pose_it)->pose.position;
 
-    const auto & a_msg = std::prev(goal_pose_it)->pose.position;
-    const auto & b_msg = goal_pose_it->pose.position;
-    const auto & c_msg = std::next(goal_pose_it)->pose.position;
-    const Eigen::Vector3d a(a_msg.x, a_msg.y, a_msg.z);
-    const Eigen::Vector3d b(b_msg.x, b_msg.y, b_msg.z);
-    const Eigen::Vector3d c(c_msg.x, c_msg.y, c_msg.z);
-
-    if ((b - a).dot(c - b) < 0) {
-      return *goal_pose_it;
+      if (dotProduct(b - a, c - b) < 0) {
+        return *goal_pose_it;
+      }
     }
   }
 
