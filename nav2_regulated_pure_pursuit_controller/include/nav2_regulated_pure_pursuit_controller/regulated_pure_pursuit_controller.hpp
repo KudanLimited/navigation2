@@ -21,6 +21,7 @@
 #include <memory>
 #include <algorithm>
 #include <mutex>
+#include <optional>
 
 #include "nav2_core/controller.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -175,17 +176,23 @@ protected:
     double & linear_vel, double & sign);
 
   /**
-   * @brief Find the intersection a circle and a line segment.
-   * This assumes the circle is centered at the origin.
-   * If no intersection is found, a floating point error will occur.
-   * @param p1 first endpoint of line segment
-   * @param p2 second endpoint of line segment
-   * @param r radius of circle
-   * @return point of intersection
+   * @brief Find the intersection between a circle and segment if it exists
+   *
+   * Both points should be transformed to the reference frame of the circle, such that (0, 0) is the
+   * circle origin.
+   * If the circle doesn't intersect the segment, nullopt will be returned.
+   * If there is only one intersection point within the segment, this is returned
+   * If there are two intersection points within the circle, the point closest to the second point is
+   * returned
+   *
+   * @param a The start of the segment
+   * @param b The end of the segment
+   * @param r The circle radius
+   * @return The intersection point if it exists, otherwise nullopt
    */
-  static geometry_msgs::msg::Point circleSegmentIntersection(
-    const geometry_msgs::msg::Point & p1,
-    const geometry_msgs::msg::Point & p2,
+  static std::optional<geometry_msgs::msg::Point> circleSegmentIntersection(
+    const geometry_msgs::msg::Point & a,
+    const geometry_msgs::msg::Point & b,
     double r);
 
   /**

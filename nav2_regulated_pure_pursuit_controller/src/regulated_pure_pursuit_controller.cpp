@@ -19,6 +19,7 @@
 #include <memory>
 #include <vector>
 #include <utility>
+#include <optional>
 
 #include "angles/angles.h"
 #include "nav2_regulated_pure_pursuit_controller/regulated_pure_pursuit_controller.hpp"
@@ -354,51 +355,110 @@ void RegulatedPurePursuitController::rotateToHeading(
   }
 }
 
-geometry_msgs::msg::Point RegulatedPurePursuitController::circleSegmentIntersection(
-  const geometry_msgs::msg::Point & p1,
-  const geometry_msgs::msg::Point & p2,
-  double r)
+/**
+ * @brief Plus operator for geometry_msgs::msg::Point
+ * @param lhs The left-hand-side argument
+ * @param rhs The right-hand-side argument
+ * @param The result (lhs - rhs)
+ */
+static geometry_msgs::msg::Point operator+(
+  const geometry_msgs::msg::Point & lhs,
+  const geometry_msgs::msg::Point & rhs)
 {
-  // Formula for intersection of a line with a circle centered at the origin,
-  // modified to always return the point that is on the segment between the two points.
-  // https://mathworld.wolfram.com/Circle-LineIntersection.html
-  // This works because the poses are transformed into the robot frame.
-  // This can be derived from solving the system of equations of a line and a circle
-  // which results in something that is just a reformulation of the quadratic formula.
-  // Interactive illustration in doc/circle-segment-intersection.ipynb as well as at
-  // https://www.desmos.com/calculator/td5cwbuocd
-  double x1 = p1.x;
-  double x2 = p2.x;
-  double y1 = p1.y;
-  double y2 = p2.y;
-
-  double dx = x2 - x1;
-  double dy = y2 - y1;
-  double dr2 = dx * dx + dy * dy;
-  double D = x1 * y2 - x2 * y1;
-
-  // Augmentation to only return point within segment
-  double d1 = x1 * x1 + y1 * y1;
-  double d2 = x2 * x2 + y2 * y2;
-  double dd = d2 - d1;
-
-  geometry_msgs::msg::Point p;
-  double sqrt_term = std::sqrt(r * r * dr2 - D * D);
-  p.x = (D * dy + std::copysign(1.0, dd) * dx * sqrt_term) / dr2;
-  p.y = (-D * dx + std::copysign(1.0, dd) * dy * sqrt_term) / dr2;
-  return p;
-}
-
-static geometry_msgs::msg::Point operator-(const geometry_msgs::msg::Point & lhs, const geometry_msgs::msg::Point & rhs) {
   geometry_msgs::msg::Point result;
-  result.x = lhs.x - rhs.x;
-  result.x = lhs.y - rhs.y;
-  result.x = lhs.z - rhs.z;
+  result.x = lhs.x + rhs.x;
+  result.y = lhs.y + rhs.y;
+  result.z = lhs.z + rhs.z;
   return result;
 }
 
-static double dotProduct(const geometry_msgs::msg::Point & a, const geometry_msgs::msg::Point & b) {
+/**
+ * @brief Minus operator for geometry_msgs::msg::Point
+ * @param lhs The left-hand-side argument
+ * @param rhs The right-hand-side argument
+ * @param The result (lhs - rhs)
+ */
+static geometry_msgs::msg::Point operator-(
+  const geometry_msgs::msg::Point & lhs,
+  const geometry_msgs::msg::Point & rhs)
+{
+  geometry_msgs::msg::Point result;
+  result.x = lhs.x - rhs.x;
+  result.y = lhs.y - rhs.y;
+  result.z = lhs.z - rhs.z;
+  return result;
+}
+
+/**
+ * @brief Multiply operator between scalar and vector as geometry_msgs::msg::Point
+ * @param lhs The scalar
+ * @param rhs The vector
+ * @param The result lhs * rhs
+ */
+static geometry_msgs::msg::Point operator*(double lhs, const geometry_msgs::msg::Point & rhs)
+{
+  geometry_msgs::msg::Point result;
+  result.x = lhs * rhs.x;
+  result.y = lhs * rhs.y;
+  result.z = lhs * rhs.z;
+  return result;
+}
+
+/**
+ * @brief Dot product between two vectors as geometry_msgs::msg::Point
+ * @param a The first vector
+ * @param b The second vector
+ * @param The dot product between the two vectors
+ */
+static double dotProduct(const geometry_msgs::msg::Point & a, const geometry_msgs::msg::Point & b)
+{
   return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+/**
+ * @brief Returns the squared l2 norm of a vector as a geometry_msgs::msg::Point
+ * @param a The vector
+ * @param The squared l2 norm
+ */
+static double normSquared(const geometry_msgs::msg::Point & a)
+{
+  return a.x * a.x + a.y * a.y + a.z * a.z;
+}
+
+std::optional<geometry_msgs::msg::Point> RegulatedPurePursuitController::circleSegmentIntersection(
+  const geometry_msgs::msg::Point & a,
+  const geometry_msgs::msg::Point & b,
+  double r)
+{
+  // Method given here: https://www.desmos.com/calculator/gflmssyr6o
+  // Intersection point s = a + s*(b-a)
+  // Solve for s, such that:
+  // - No solution (negative determinant) = Circle doesn't intersect the line
+  // - Two solutions s1 and s2 must lie within [0, 1] to lie within the segment
+
+  const double k = dotProduct(a, b - a) / normSquared(b - a);
+  const double determinant =
+    std::pow(k, 2) - (normSquared(a) - std::pow(r, 2)) / normSquared(b - a);
+
+  if (determinant < 0) {
+    // The line through the segment doesn't intersect the circle
+    return std::nullopt;
+  }
+
+  const double s1 = -k - std::sqrt(determinant);
+  const double s2 = -k + std::sqrt(determinant);
+
+  if (s2 >= 0 && s2 <= 1) {
+    // s2 is within the segment, and takes priority since it's closer to b
+    return a + s2 * (b - a);
+  }
+  if (s1 >= 0 && s1 <= 1) {
+    // s1 is within the segment
+    return a + s1 * (b - a);
+  }
+
+  // Neither intersection point is within the segment
+  return std::nullopt;
 }
 
 geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoint(
@@ -478,8 +538,15 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
 
     // Use the circle intersection to find the position at the correct look
     // ahead distance
-    const auto interpolated_position = circleSegmentIntersection(
+    const auto intersection_point = circleSegmentIntersection(
       last_pose_it->pose.position, projected_position, lookahead_dist);
+
+    geometry_msgs::msg::Point interpolated_position;
+    if (intersection_point) {
+      interpolated_position = *intersection_point;
+    } else {
+      interpolated_position = last_pose_it->pose.position;
+    }
 
     geometry_msgs::msg::PoseStamped interpolated_pose;
     interpolated_pose.header = last_pose_it->header;
@@ -489,17 +556,28 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
 
   // Have two neighboring points inside and outside the lookahead distance
   // (goal_pose_it and std::prev(goal_pose_it))
+  // std::prev(goal_pose_it) is guaranteed to exist, since goal_pose_it starts at
+  // as std::next(transformed_plan.poses.begin())
 
   // Find the point on the line segment between the two poses
   // that is exactly the lookahead distance away from the robot pose (the origin)
-  // This can be found with a closed form for the intersection of a segment and a circle
-  // Because of the way we did the std::find_if, prev_pose is guaranteed to be inside the circle,
-  // and goal_pose is guaranteed to be outside the circle.
+  // Not guaranteed that prev_pose_it is within the lookahead distance, in which case:
+  // - If there is no intersection point, then prev_pose_it is used
+  // - If there are multiple intersections within the segment, the point closer to goal_pose_it
+  //   (the end of the segment) is returned
 
   auto prev_pose_it = std::prev(goal_pose_it);
-  auto point = circleSegmentIntersection(
+  auto intersection_point = circleSegmentIntersection(
     prev_pose_it->pose.position,
     goal_pose_it->pose.position, lookahead_dist);
+
+  geometry_msgs::msg::Point point;
+  if (intersection_point) {
+    point = *intersection_point;
+  } else {
+    point = prev_pose_it->pose.position;
+  }
+
   geometry_msgs::msg::PoseStamped pose;
   pose.header.frame_id = prev_pose_it->header.frame_id;
   pose.header.stamp = goal_pose_it->header.stamp;
