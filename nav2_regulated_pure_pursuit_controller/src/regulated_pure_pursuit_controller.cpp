@@ -19,7 +19,6 @@
 #include <memory>
 #include <vector>
 #include <utility>
-#include <optional>
 
 #include "angles/angles.h"
 #include "nav2_regulated_pure_pursuit_controller/regulated_pure_pursuit_controller.hpp"
@@ -359,7 +358,7 @@ void RegulatedPurePursuitController::rotateToHeading(
  * @brief Plus operator for geometry_msgs::msg::Point
  * @param lhs The left-hand-side argument
  * @param rhs The right-hand-side argument
- * @param The result (lhs - rhs)
+ * @return The result (lhs + rhs)
  */
 static geometry_msgs::msg::Point operator+(
   const geometry_msgs::msg::Point & lhs,
@@ -376,7 +375,7 @@ static geometry_msgs::msg::Point operator+(
  * @brief Minus operator for geometry_msgs::msg::Point
  * @param lhs The left-hand-side argument
  * @param rhs The right-hand-side argument
- * @param The result (lhs - rhs)
+ * @return The result (lhs - rhs)
  */
 static geometry_msgs::msg::Point operator-(
   const geometry_msgs::msg::Point & lhs,
@@ -393,7 +392,7 @@ static geometry_msgs::msg::Point operator-(
  * @brief Multiply operator between scalar and vector as geometry_msgs::msg::Point
  * @param lhs The scalar
  * @param rhs The vector
- * @param The result lhs * rhs
+ * @return The result lhs * rhs
  */
 static geometry_msgs::msg::Point operator*(double lhs, const geometry_msgs::msg::Point & rhs)
 {
@@ -408,7 +407,7 @@ static geometry_msgs::msg::Point operator*(double lhs, const geometry_msgs::msg:
  * @brief Dot product between two vectors as geometry_msgs::msg::Point
  * @param a The first vector
  * @param b The second vector
- * @param The dot product between the two vectors
+ * @return The dot product between the two vectors
  */
 static double dotProduct(const geometry_msgs::msg::Point & a, const geometry_msgs::msg::Point & b)
 {
@@ -418,7 +417,7 @@ static double dotProduct(const geometry_msgs::msg::Point & a, const geometry_msg
 /**
  * @brief Returns the squared l2 norm of a vector as a geometry_msgs::msg::Point
  * @param a The vector
- * @param The squared l2 norm
+ * @return The squared l2 norm
  */
 static double normSquared(const geometry_msgs::msg::Point & a)
 {
@@ -472,12 +471,10 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
   }
 
   // Set goal_pose_it to the first point outside the lookahead_dist, excluding the first point
-  // Special cases:
-  //   - If allow_reversing is true, then while searching for this point check for
-  //     cusp points (where the direction changes) and early return the cusp point as
-  //     the lookahead point instead
-  //   - If goal_pose_it == second point, and first point is also outside the lookahead distance
-  //     then need extra logic for checking if the lookahead circle still intersects the segment
+  // Special case:
+  //   If allow_reversing is true, then while searching for this point check for
+  //   cusp points (where the direction changes) and early return the cusp point as
+  //   the lookahead point instead
 
   auto goal_pose_it = next(transformed_plan.poses.begin());
 
@@ -541,6 +538,8 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
     const auto intersection_point = circleSegmentIntersection(
       last_pose_it->pose.position, projected_position, lookahead_dist);
 
+    // The intersection_point should always exist here, but default to
+    // the last position if for some reason it doesn't
     geometry_msgs::msg::Point interpolated_position;
     if (intersection_point) {
       interpolated_position = *intersection_point;
@@ -562,9 +561,9 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
   // Find the point on the line segment between the two poses
   // that is exactly the lookahead distance away from the robot pose (the origin)
   // Not guaranteed that prev_pose_it is within the lookahead distance, in which case:
-  // - If there is no intersection point, then prev_pose_it is used
   // - If there are multiple intersections within the segment, the point closer to goal_pose_it
-  //   (the end of the segment) is returned
+  //   (the end of the segment) is returned by circleSegmentIntersection
+  // - If there is no intersection point, then prev_pose_it position is used instead
 
   auto prev_pose_it = std::prev(goal_pose_it);
   auto intersection_point = circleSegmentIntersection(
