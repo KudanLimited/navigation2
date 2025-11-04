@@ -14,7 +14,8 @@
 
 #include "nav2_regulated_pure_pursuit_controller/math_utils.hpp"
 
-namespace nav2_regulated_pure_pursuit_controller {
+namespace nav2_regulated_pure_pursuit_controller
+{
 
 /**
  * @brief Plus operator for geometry_msgs::msg::Point
@@ -86,4 +87,4 @@ double normSquared(const geometry_msgs::msg::Point & a)
   return a.x * a.x + a.y * a.y + a.z * a.z;
 }
 
-} // namespace nav2_regulated_pure_pursuit_controller
+}  // namespace nav2_regulated_pure_pursuit_controller

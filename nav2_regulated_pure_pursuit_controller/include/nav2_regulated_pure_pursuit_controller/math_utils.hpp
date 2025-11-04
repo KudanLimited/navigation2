@@ -17,7 +17,8 @@
 
 #include <geometry_msgs/msg/point.hpp>
 
-namespace nav2_regulated_pure_pursuit_controller {
+namespace nav2_regulated_pure_pursuit_controller
+{
 
 /**
  * @brief Plus operator for geometry_msgs::msg::Point
@@ -62,6 +63,6 @@ double dotProduct(const geometry_msgs::msg::Point & a, const geometry_msgs::msg:
  */
 double normSquared(const geometry_msgs::msg::Point & a);
 
-} // namespace nav2_regulated_pure_pursuit_controller
+}  // namespace nav2_regulated_pure_pursuit_controller
 
-#endif
+#endif  // NAV2_REGULATED_PURE_PURSUIT_CONTROLLER__MATH_UTILS_HPP_
