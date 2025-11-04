@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <Eigen/Geometry>
 #include <algorithm>
 #include <string>
 #include <limits>
@@ -24,6 +23,7 @@
 #include "nav2_core/controller_exceptions.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "nav2_util/geometry_utils.hpp"
+#include "nav2_regulated_pure_pursuit_controller/math_utils.hpp"
 
 namespace nav2_regulated_pure_pursuit_controller
 {
@@ -98,15 +98,12 @@ nav_msgs::msg::Path PathHandler::transformGlobalPlan(
   // If at the final point (or reject_unit_path and down to the final 2 points) then
   // there is no more pruning to be done
   if (global_plan_.poses.size() > (reject_unit_path ? 2 : 1)) {
-    const auto & a_msg = global_plan_.poses[0].pose.position;
-    const auto & b_msg = global_plan_.poses[1].pose.position;
-    const auto & x_msg = robot_pose.pose.position;
-    const Eigen::Vector3d a(a_msg.x, a_msg.y, a_msg.z);
-    const Eigen::Vector3d b(b_msg.x, b_msg.y, b_msg.z);
-    const Eigen::Vector3d x(x_msg.x, x_msg.y, x_msg.z);
+    const auto & a = global_plan_.poses[0].pose.position;
+    const auto & b = global_plan_.poses[1].pose.position;
+    const auto & x = robot_pose.pose.position;
 
-    const Eigen::Vector3d ab = (b - a);
-    if (ab.dot(x - a) > ab.dot(ab)) {
+    const geometry_msgs::msg::Point ab = (b - a);
+    if (dotProduct(ab, x - a) > dotProduct(ab, ab)) {
       global_plan_.poses.erase(global_plan_.poses.begin());
     }
   }
