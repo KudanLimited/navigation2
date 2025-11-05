@@ -178,12 +178,12 @@ protected:
   /**
    * @brief Find the intersection between a circle and segment if it exists
    *
+   * The segment is defined by start and end points, a and b.
    * Both points should be transformed to the reference frame of the circle, such that (0, 0) is the
    * circle origin.
    * If the circle doesn't intersect the segment, nullopt will be returned.
-   * If there is only one intersection point within the segment, this is returned
-   * If there are two intersection points within the circle, the point closest to the second point is
-   * returned
+   * If there is only one intersection point, this is returned.
+   * If there are two intersection points, the point closest to end of the segment (b) is returned.
    *
    * @param a The start of the segment
    * @param b The end of the segment
