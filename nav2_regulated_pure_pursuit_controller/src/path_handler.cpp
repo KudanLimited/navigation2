@@ -23,6 +23,7 @@
 #include "nav2_core/controller_exceptions.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "nav2_util/geometry_utils.hpp"
+#include "nav2_regulated_pure_pursuit_controller/math_utils.hpp"
 
 namespace nav2_regulated_pure_pursuit_controller
 {
@@ -33,7 +34,8 @@ PathHandler::PathHandler(
   tf2::Duration transform_tolerance,
   std::shared_ptr<tf2_ros::Buffer> tf,
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros)
-: transform_tolerance_(transform_tolerance), tf_(tf), costmap_ros_(costmap_ros)
+: transform_tolerance_(transform_tolerance), tf_(tf), costmap_ros_(costmap_ros),
+  global_plan_reset_(false)
 {
 }
 
@@ -64,33 +66,52 @@ nav_msgs::msg::Path PathHandler::transformGlobalPlan(
     throw nav2_core::ControllerTFError("Unable to transform robot pose into global plan's frame");
   }
 
-  auto closest_pose_upper_bound =
-    nav2_util::geometry_utils::first_after_integrated_distance(
-    global_plan_.poses.begin(), global_plan_.poses.end(), max_robot_pose_search_dist);
+  // The global plan should be always pruned, such that the first point is the start of
+  // the currently tracked segment
+  // - Whenever the global plan has first been received, need to search for the closest point
+  //   for the initial prune
+  // - For subsequent calls to this function, just need to check if the segment has been passed
 
-  // First find the closest pose on the path to the robot
-  // bounded by when the path turns around (if it does) so we don't get a pose from a later
-  // portion of the path
-  auto transformation_begin =
-    nav2_util::geometry_utils::min_by(
-    global_plan_.poses.begin(), closest_pose_upper_bound,
-    [&robot_pose](const geometry_msgs::msg::PoseStamped & ps) {
-      return euclidean_distance(robot_pose, ps);
-    });
+  if (global_plan_reset_) {
+    auto closest_pose_upper_bound =
+      nav2_util::geometry_utils::first_after_integrated_distance(
+      global_plan_.poses.begin(), global_plan_.poses.end(), max_robot_pose_search_dist);
 
-  // Make sure we always have at least 2 points on the transformed plan and that we don't prune
-  // the global plan below 2 points in order to have always enough point to interpolate the
-  // end of path direction
-  if (global_plan_.poses.begin() != closest_pose_upper_bound && global_plan_.poses.size() > 1 &&
-    transformation_begin == std::prev(closest_pose_upper_bound))
-  {
-    transformation_begin = std::prev(std::prev(closest_pose_upper_bound));
+    auto closest_pose = nav2_util::geometry_utils::min_by(
+      global_plan_.poses.begin(), closest_pose_upper_bound,
+      [&robot_pose](const geometry_msgs::msg::PoseStamped & ps) {
+        return euclidean_distance(robot_pose, ps);
+      });
+
+    if (reject_unit_path && std::next(closest_pose) == global_plan_.poses.end()) {
+      // If reject_unit_path == true, guaranteed that there are at least 2 points
+      // Therefore there is a point before the final point in the path, so
+      // can safely decrement closest_pose
+      closest_pose--;
+    }
+
+    global_plan_.poses.erase(global_plan_.poses.begin(), closest_pose);
+    global_plan_reset_ = false;
+  }
+
+  // Prune the first point on the path whenever the corresponding segment is passed
+  // If at the final point (or reject_unit_path and down to the final 2 points) then
+  // there is no more pruning to be done
+  if (global_plan_.poses.size() > (reject_unit_path ? 2 : 1)) {
+    const auto & a = global_plan_.poses[0].pose.position;
+    const auto & b = global_plan_.poses[1].pose.position;
+    const auto & x = robot_pose.pose.position;
+
+    const geometry_msgs::msg::Point ab = (b - a);
+    if (dotProduct(ab, x - a) > dotProduct(ab, ab)) {
+      global_plan_.poses.erase(global_plan_.poses.begin());
+    }
   }
 
   // We'll discard points on the plan that are outside the local costmap
   const double max_costmap_extent = getCostmapMaxExtent();
   auto transformation_end = std::find_if(
-    transformation_begin, global_plan_.poses.end(),
+    global_plan_.poses.begin(), global_plan_.poses.end(),
     [&](const auto & global_plan_pose) {
       return euclidean_distance(global_plan_pose, robot_pose) > max_costmap_extent;
     });
@@ -111,15 +132,11 @@ nav_msgs::msg::Path PathHandler::transformGlobalPlan(
   // Transform the near part of the global plan into the robot's frame of reference.
   nav_msgs::msg::Path transformed_plan;
   std::transform(
-    transformation_begin, transformation_end,
+    global_plan_.poses.begin(), transformation_end,
     std::back_inserter(transformed_plan.poses),
     transformGlobalPoseToLocal);
   transformed_plan.header.frame_id = costmap_ros_->getBaseFrameID();
   transformed_plan.header.stamp = robot_pose.header.stamp;
-
-  // Remove the portion of the global plan that we've already passed so we don't
-  // process it on the next iteration (this is called path pruning)
-  global_plan_.poses.erase(begin(global_plan_.poses), transformation_begin);
 
   if (transformed_plan.poses.empty()) {
     throw nav2_core::InvalidPath("Resulting plan has 0 poses in it.");

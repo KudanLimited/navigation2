@@ -60,7 +60,7 @@ public:
     return getLookAheadDistance(twist);
   }
 
-  static geometry_msgs::msg::Point circleSegmentIntersectionWrapper(
+  static std::optional<geometry_msgs::msg::Point> circleSegmentIntersectionWrapper(
     const geometry_msgs::msg::Point & p1,
     const geometry_msgs::msg::Point & p2,
     double r)
@@ -243,10 +243,11 @@ TEST_P(CircleSegmentIntersectionTest, circleSegmentIntersection)
   auto p2 = pair_to_point(pair2);
   auto actual = BasicAPIRPP::circleSegmentIntersectionWrapper(p1, p2, r);
   auto expected_point = pair_to_point(expected_pair);
-  EXPECT_DOUBLE_EQ(actual.x, expected_point.x);
-  EXPECT_DOUBLE_EQ(actual.y, expected_point.y);
+  ASSERT_TRUE(actual.has_value());
+  EXPECT_DOUBLE_EQ(actual->x, expected_point.x);
+  EXPECT_DOUBLE_EQ(actual->y, expected_point.y);
   // Expect that the intersection point is actually r away from the origin
-  EXPECT_DOUBLE_EQ(r, std::hypot(actual.x, actual.y));
+  EXPECT_DOUBLE_EQ(r, std::hypot(actual->x, actual->y));
 }
 
 INSTANTIATE_TEST_SUITE_P(

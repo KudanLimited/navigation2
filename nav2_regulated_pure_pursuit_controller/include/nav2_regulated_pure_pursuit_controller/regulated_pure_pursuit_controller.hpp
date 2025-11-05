@@ -21,6 +21,7 @@
 #include <memory>
 #include <algorithm>
 #include <mutex>
+#include <optional>
 
 #include "nav2_core/controller.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -175,17 +176,23 @@ protected:
     double & linear_vel, double & sign);
 
   /**
-   * @brief Find the intersection a circle and a line segment.
-   * This assumes the circle is centered at the origin.
-   * If no intersection is found, a floating point error will occur.
-   * @param p1 first endpoint of line segment
-   * @param p2 second endpoint of line segment
-   * @param r radius of circle
-   * @return point of intersection
+   * @brief Find the intersection between a circle and segment if it exists
+   *
+   * The segment is defined by start and end points, a and b.
+   * Both points should be transformed to the reference frame of the circle, such that (0, 0) is the
+   * circle origin.
+   * If the circle doesn't intersect the segment, nullopt will be returned.
+   * If there is only one intersection point, this is returned.
+   * If there are two intersection points, the point closest to end of the segment (b) is returned.
+   *
+   * @param a The start of the segment
+   * @param b The end of the segment
+   * @param r The circle radius
+   * @return The intersection point if it exists, otherwise nullopt
    */
-  static geometry_msgs::msg::Point circleSegmentIntersection(
-    const geometry_msgs::msg::Point & p1,
-    const geometry_msgs::msg::Point & p2,
+  static std::optional<geometry_msgs::msg::Point> circleSegmentIntersection(
+    const geometry_msgs::msg::Point & a,
+    const geometry_msgs::msg::Point & b,
     double r);
 
   /**
@@ -193,12 +200,14 @@ protected:
    * @param lookahead_dist Optimal lookahead distance
    * @param path Current global path
    * @param interpolate_after_goal If true, interpolate the lookahead point after the goal based
+   * @param allow_reversing If true, the lookahead point will stop at points where the direction changes
    * on the orientation given by the position of the last two pose of the path
    * @return Lookahead point
    */
   geometry_msgs::msg::PoseStamped getLookAheadPoint(
     const double &, const nav_msgs::msg::Path &,
-    bool interpolate_after_goal = false);
+    bool interpolate_after_goal = false,
+    bool allow_reversing = false);
 
   /**
    * @brief checks for the cusp position
