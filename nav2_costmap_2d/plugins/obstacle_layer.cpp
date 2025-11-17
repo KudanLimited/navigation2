@@ -480,8 +480,8 @@ ObstacleLayer::updateBounds(
       }
 
       // compute the distance from the hitpoint to the pointcloud's origin
-      // Calculate the distance in cells to match the ray trace algorithm used for clearing obstacles.
-      // (see Costmap2D::raytraceLine)
+      // Calculate the distance in cells to match the ray trace algorithm used for clearing
+      // obstacles (see Costmap2D::raytraceLine).
       unsigned int origin_cell_x;
       unsigned int origin_cell_y;
       worldToMap(obs.origin_.x, obs.origin_.y, origin_cell_x, origin_cell_y);
