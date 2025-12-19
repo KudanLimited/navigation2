@@ -312,6 +312,38 @@ TEST_F(ObstacleLayerTest, testOriginOffset)
 }
 
 /**
+ * Test that raytracing does NOT clear the cell containing the observation endpoint
+ * raytrace_max_range > obstacle_max_range
+ */
+TEST_F(ObstacleLayerTest, testRaytraceDoesNotClearEndpointCell)
+{
+  // First, mark the endpoint cell and some intermediate cells as obstacles
+  unsigned int mx_end;
+  unsigned int my_end;
+  obstacle_layer_->worldToMap(1.05, 0.0, mx_end, my_end);
+  for (unsigned int x = 0; x <= mx_end; ++x) {
+    obstacle_layer_->setCost(x, my_end, nav2_costmap_2d::LETHAL_OBSTACLE);
+  }
+
+  // Add observation at (1.05, 0.0)
+  // This is beyond the obstacle_max_range of 0.5m so should not be marked.
+  // raytrace_max_range = 2.0m
+  // So raytrace should clear cells up to but NOT including the endpoint
+  addObservation(obstacle_layer_, 1.05, 0.0, MAX_Z / 2, 0.0, 0.0, MAX_Z / 2,
+    true, true, 2.0, 0.0, 0.5, 0.0);
+  update();
+  // The endpoint cell should still be LETHAL_OBSTACLE (not cleared)
+  unsigned char cost_endpoint = obstacle_layer_->getCost(mx_end, my_end);
+  ASSERT_EQ(cost_endpoint, nav2_costmap_2d::LETHAL_OBSTACLE);
+
+  // The intermediate cells should be cleared (FREE_SPACE)
+  for (unsigned int x = 0; x < mx_end; ++x) {
+    unsigned char cost_mid = obstacle_layer_->getCost(x, my_end);
+    ASSERT_EQ(cost_mid, nav2_costmap_2d::FREE_SPACE);
+  }
+}
+
+/**
  * Test that raytracing clears cells along the path and the endpoint is marked
  * as obstacle.
  */
@@ -393,4 +425,34 @@ TEST_F(ObstacleLayerTest, testClearDiagonalDistance) {
   ASSERT_EQ(countValues(*obstacle_layer_, nav2_costmap_2d::FREE_SPACE), 8);
   ASSERT_EQ(countValues(*obstacle_layer_, nav2_costmap_2d::LETHAL_OBSTACLE),
             20 * 20 - 8);
+}
+
+/**
+ * Test edge case: observation very close to origin
+ * Resolution: 0.1m/cell
+ * Origin at (0.0, 0.0), observation at (0.09, 0.0) - same cell as origin
+ * This means no raytracing should occur
+ */
+TEST_F(ObstacleLayerTest, testRaytraceWithObservationCloseToOrigin)
+{
+  // Mark all points as obstacles
+  for (unsigned int x = 0; x < obstacle_layer_->getSizeInCellsX(); x++) {
+    for (unsigned int y = 0; y < obstacle_layer_->getSizeInCellsY(); y++) {
+      obstacle_layer_->setCost(x, y, nav2_costmap_2d::LETHAL_OBSTACLE);
+    }
+  }
+
+  // Add observation at (0.09, 0.0), min obstacle range = 1.0m so it is not
+  // marked.
+  addObservation(obstacle_layer_, 0.09, 0.0, MAX_Z / 2, 0.0, 0.0, MAX_Z / 2,
+                 true, true, 2.0, 0.0, 100.0, 1.0);
+  update();
+
+  // All points should still be LETHAL_OBSTACLE
+  for (unsigned int x = 0; x < obstacle_layer_->getSizeInCellsX(); x++) {
+    for (unsigned int y = 0; y < obstacle_layer_->getSizeInCellsY(); y++) {
+      unsigned char cost = obstacle_layer_->getCost(x, y);
+      ASSERT_EQ(cost, nav2_costmap_2d::LETHAL_OBSTACLE);
+    }
+  }
 }
